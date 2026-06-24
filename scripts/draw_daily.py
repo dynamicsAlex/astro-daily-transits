@@ -357,7 +357,7 @@ def draw_combined_wheel(draw, cx, cy, RO, RS, RH, RP_NATAL, RP_TRANSIT, RI,
 # LEGENDS below wheel
 # ═══════════════════════════════════════════════════════════
 
-def draw_legends(draw, planets_raw, cx, cy, RO, RU):
+def draw_legends(draw, img, planets_raw, cx, cy, RO, RU, frame_img=None, divider_x=2160):
     FS = 17; FM = 20
     LEG = cy + RO + 15
     plx = 20; ply = LEG; prh = 26; pw = 280
@@ -401,6 +401,18 @@ def draw_legends(draw, planets_raw, cx, cy, RO, RU):
     # Retrograde
     ry = asy + ash + len(ail) * ash
     rtext(draw, asx, ry, "--- R  Ретро", FS-2, RETRO_COL)
+
+    # ── QR code (donations) — right of legends, same Y level ──
+    # Position: right-aligned to left panel, 50px from divider
+    if frame_img is not None:
+        qr_w = frame_img.size[0]
+        qr_h = frame_img.size[1]
+        qr_x = divider_x - 50 - qr_w  # 50px left of divider
+        qr_y = asy  # same Y level as legends
+        # Use alpha_composite to properly blend RGBA onto RGB canvas
+        _region = img.crop((qr_x, qr_y, qr_x + qr_w, qr_y + qr_h)).convert('RGBA')
+        _composited = Image.alpha_composite(_region, frame_img)
+        img.paste(_composited.convert('RGB'), (qr_x, qr_y))
 
 # ═══════════════════════════════════════════════════════════
 # FORECAST PANEL — wide, with colored planet names and word-wrap
@@ -484,7 +496,7 @@ def _wrap_colorized(parts, size, max_w):
         lines.pop()
     return lines
 
-def draw_forecast_panel(draw, img, data, panel_x, panel_w, H, RU, planets_raw, frame_img=None):
+def draw_forecast_panel(draw, data, panel_x, panel_w, H, RU, planets_raw):
     FS = 21; FM = 24; FL = 28; LH = 28
 
     IPP = 35
@@ -737,15 +749,7 @@ def draw_forecast_panel(draw, img, data, panel_x, panel_w, H, RU, planets_raw, f
         url = "https://clawhub.ai/dynamicsAlex/astro-daily-transits"
         draw_parts_cent([(url, (80,80,120))], FS - 2, (80,80,120))
 
-    # ── QR code (donations) ──
-    if frame_img is not None and y < H - 40:
-        y += 14
-        frame_w = frame_img.size[0]
-        frame_h = frame_img.size[1]
-        frame_x = IPXL + IPW - frame_w
-        frame_y = y
-        img.paste(frame_img, (frame_x, frame_y))
-        y += frame_h + 10
+
 
 
 def _generate_ai_conclusion(data, RU, planets_raw):
@@ -876,7 +880,7 @@ def main():
     _SCRIPTDIR = os.path.dirname(os.path.abspath(__file__))
 
     # Load frame image (QR code). Default: bundled frame_small.png.dat
-    # Convert to RGB with white background to avoid transparency issues on RGB canvas
+    # Keep RGBA to preserve transparency for correct rendering on RGB canvas
     frame_img = None
     frame_path = args.frame
     if frame_path is None:
@@ -888,13 +892,7 @@ def main():
     if os.path.exists(frame_path):
         try:
             _qr_raw = Image.open(frame_path)
-            if _qr_raw.mode == 'RGBA':
-                # Composite onto white background to preserve QR visibility
-                _bg = Image.new('RGB', _qr_raw.size, (255, 255, 255))
-                _bg.paste(_qr_raw, mask=_qr_raw.split()[3])
-                frame_img = _bg
-            else:
-                frame_img = _qr_raw.convert('RGB') if _qr_raw.mode != 'RGB' else _qr_raw
+            frame_img = _qr_raw if _qr_raw.mode == 'RGBA' else _qr_raw.convert('RGBA')
             print(f"Frame loaded: {frame_img.size} from {frame_path}")
         except Exception as e:
             print(f"Warning: could not load frame image: {e}")
@@ -974,11 +972,11 @@ def main():
                         wheel_title, name=args.name, aspects=aspects)
 
     # ── Legends ──
-    draw_legends(draw, planets_raw, natal_cx, natal_cy, RO, RU)
+    draw_legends(draw, img, planets_raw, natal_cx, natal_cy, RO, RU, frame_img=frame_img, divider_x=WHEEL)
 
     # ── Forecast panel ──
     PANEL_X = WHEEL
-    draw_forecast_panel(draw, img, data, PANEL_X, PANEL_W, TOT_H, RU, planets_raw, frame_img=frame_img)
+    draw_forecast_panel(draw, data, PANEL_X, PANEL_W, TOT_H, RU, planets_raw)
 
     # ── Divider ──
     draw.line([(WHEEL, 0), (WHEEL, TOT_H)], fill=DIVIDER_COL, width=3)
